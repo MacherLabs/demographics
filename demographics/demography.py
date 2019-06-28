@@ -11,7 +11,7 @@ import common
 
 import os
 #work_dir = os.path.dirname(os.path.abspath(__file__))
-work_dir = "/LFS"
+work_dir = "/LFS/demographics"
 
 RESIZE_FINAL = 227
 
