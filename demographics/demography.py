@@ -12,6 +12,7 @@ import torch
 from torchvision import transforms
 from PIL import Image
 from coral_cnn import resnet34
+import cv2
 
 import os
 #work_dir = os.path.dirname(os.path.abspath(__file__))
