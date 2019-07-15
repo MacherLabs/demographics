@@ -8,6 +8,10 @@ from demographics.utils import *
 from demographics.model import select_model, get_checkpoint
 from face import Face
 import common
+import torch
+from torchvision import transforms
+from PIL import Image
+from coral_cnn import resnet34
 
 import os
 #work_dir = os.path.dirname(os.path.abspath(__file__))
@@ -66,6 +70,59 @@ class AgeEstimate(object):
         with self.graph.as_default():
             return classify(self.sess, self.label_list, self.softmax_output, self.images, self.image_batch, self.face_placeholder, face)
 
+class AgeEstimate_Coral(object):
+    def __init__(self):
+        RANDOM_SEED = 0
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(RANDOM_SEED)
+            self.DEVICE = torch.device("cuda:0")
+        else:
+            torch.manual_seed(RANDOM_SEED)
+            self.DEVICE = torch.device("cpu")
+        self.model_dir = os.path.join(work_dir, 'model_age_coral')
+        self.model = resnet34(100, False)
+        self.model.load_state_dict(torch.load(os.path.join(self.model_dir,'model_imdb.pt')))
+        self.custom_transform = transforms.Compose([transforms.Resize((128, 128)),
+                                       transforms.RandomCrop((120, 120)),
+                                       transforms.ToTensor()])
+        self.label_list = ['(0, 3)','(4, 7)','(8, 13)','(14, 22)','(23, 34)','(35, 46)','(47, 59)','(60, 100)']
+        self.model.to(self.DEVICE)
+        self.model.eval()
+
+    def run(self, face):
+        face = cv2.cvtColor(face, cv2.COLOR_BGR2RGB)
+        face = Image.fromarray(face)
+        face = self.custom_transform(face)
+        face = face.view(-1, 3, 120, 120)
+        if torch.cuda.is_available():
+            face = face.type(torch.cuda.FloatTensor)
+        else:
+            face = face.type(torch.FloatTensor)
+        face.to(self.DEVICE)
+        logits, pred = self.model(face)
+        age = pred > 0.5
+        age = torch.sum(age, dim=1)
+        best = self.encoded_age(age)
+        return self.label_list[best]
+
+    def encoded_age(self, val):
+        if(val<=3):
+            z = 0
+        elif(val<=7):
+            z = 1
+        elif(val<=13):
+            z = 2
+        elif(val<=22):
+            z = 3
+        elif(val<=34):
+            z = 4
+        elif(val<=46):
+            z = 5
+        elif(val<=59):
+            z = 6
+        elif(val<=100):
+            z = 7
+        return z
 
 class GenderEstimate(object):
     def __init__(self):
@@ -92,8 +149,11 @@ class GenderEstimate(object):
 
 
 class Demography(object):
-    def __init__(self, face_method='dlib', device='cpu'):
-        self.age_estimator = AgeEstimate()
+    def __init__(self, face_method='dlib', device='cpu', age_method='inception'):
+        if age_method == 'inception':
+            self.age_estimator = AgeEstimate()
+        elif age_method == 'coral':
+            self.age_estimator = AgeEstimate_Coral()
         self.gender_estimator = GenderEstimate()
         self.face_detect = Face(detector_method=face_method, recognition_method=None)
 
@@ -106,8 +166,14 @@ class Demography(object):
 
     def run_face(self, imgcv, face_box):
         face_image = common.subImage(imgcv, face_box)
-        age = self.age_estimator.run(face_image)
         gender = self.gender_estimator.run(face_image)
+
+        if isinstance(self.age_estimator, AgeEstimate):
+            age = self.age_estimator.run(face_image)
+        elif isinstance(self.age_estimator, AgeEstimate_Coral):
+            face_image = common.subImage(imgcv, face_box, padding_type='coral')
+            gender = self.gender_estimator.run(face_image)
+
         return self._format_results(face_box, age, gender)
 
     def _format_results(self, face_box, age, gender):
