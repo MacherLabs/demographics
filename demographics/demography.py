@@ -172,7 +172,7 @@ class Demography(object):
             age = self.age_estimator.run(face_image)
         elif isinstance(self.age_estimator, AgeEstimate_Coral):
             face_image = common.subImage(imgcv, face_box, padding_type='coral')
-            gender = self.gender_estimator.run(face_image)
+            age = self.gender_estimator.run(face_image)
 
         return self._format_results(face_box, age, gender)
 
