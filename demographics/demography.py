@@ -11,7 +11,7 @@ import common
 import torch
 from torchvision import transforms
 from PIL import Image
-from coral_cnn import resnet34
+from .coral_cnn import resnet34
 import cv2
 
 import os
