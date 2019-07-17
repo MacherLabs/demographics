@@ -1,1 +1,1 @@
-from demography import Demography
+from .demography import Demography
