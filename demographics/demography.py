@@ -23,7 +23,7 @@ RESIZE_FINAL = 227
 model_type = 'inception'
 checkpoint = 'checkpoint'
 
-gpu_options = tf.GPUOptions(allow_growth=True)
+gpu_options = tf.GPUOptions(allow_growth=False)
 config = tf.ConfigProto(allow_soft_placement=True, gpu_options=gpu_options)
 config.gpu_options.per_process_gpu_memory_fraction = 0.12
 model_fn = select_model(model_type)
