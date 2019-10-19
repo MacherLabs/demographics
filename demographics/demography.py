@@ -152,7 +152,7 @@ class GenderEstimate(object):
 
 class Demography(object):
     def __init__(self, face_method='dlib', device='cpu', age_method='inception', gpu_config = None):
-        if gpu_usage is not None:
+        if gpu_config is not None:
             global config
             config.gpu_options.per_process_gpu_memory_fraction = gpu_config
         if age_method == 'inception':
