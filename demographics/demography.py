@@ -92,20 +92,21 @@ class AgeEstimate_Coral(object):
         self.model.eval()
 
     def run(self, face):
-        face = cv2.cvtColor(face, cv2.COLOR_BGR2RGB)
-        face = Image.fromarray(face)
-        face = self.custom_transform(face)
-        face = face.view(-1, 3, 120, 120)
-        if torch.cuda.is_available():
-            face = face.type(torch.cuda.FloatTensor)
-        else:
-            face = face.type(torch.FloatTensor)
-        face.to(self.DEVICE)
-        logits, pred = self.model(face)
-        age = pred > 0.5
-        age = torch.sum(age, dim=1)
-        best = self.encoded_age(age)
-        return self.label_list[best]
+	with torch.no_grad():
+            face = cv2.cvtColor(face, cv2.COLOR_BGR2RGB)
+            face = Image.fromarray(face)
+            face = self.custom_transform(face)
+            face = face.view(-1, 3, 120, 120)
+            if torch.cuda.is_available():
+                face = face.type(torch.cuda.FloatTensor)
+            else:
+                face = face.type(torch.FloatTensor)
+            face.to(self.DEVICE)
+            logits, pred = self.model(face)
+            age = pred > 0.5
+            age = torch.sum(age, dim=1)
+            best = self.encoded_age(age)
+            return self.label_list[best]
 
     def encoded_age(self, val):
         if(val<=3):
