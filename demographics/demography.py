@@ -5,27 +5,27 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 from demographics.utils import *
-from demographics.model import select_model, get_checkpoint
-from face import Face
-import common
-import torch
-from torchvision import transforms
-from PIL import Image
-from .coral_cnn import resnet34
+#from demographics.model import select_model, get_checkpoint
+# from face import Face
+# import common
+# import torch
+# from torchvision import transforms
+# from PIL import Image
+# from .coral_cnn import resnet34
 import cv2
 
 import os
 #work_dir = os.path.dirname(os.path.abspath(__file__))
 work_dir = "/LFS/demographics"
 
-RESIZE_FINAL = 227
+# RESIZE_FINAL = 227
 
-model_type = 'inception'
-checkpoint = 'checkpoint'
+# model_type = 'inception'
+# checkpoint = 'checkpoint'
 
-gpu_options = tf.GPUOptions(allow_growth=True)
-config = tf.ConfigProto(allow_soft_placement=True, gpu_options=gpu_options)
-model_fn = select_model(model_type)
+# gpu_options = tf.GPUOptions(allow_growth=True)
+# config = tf.ConfigProto(allow_soft_placement=True, gpu_options=gpu_options)
+# model_fn = select_model(model_type)
 
 
 def classify(sess, label_list, softmax_output, images, image_batch, face_placeholder, face):
@@ -129,6 +129,7 @@ class GenderEstimate(object):
     def __init__(self):
         self.model_dir = os.path.join(work_dir, 'model_gender')
         self.label_list = ['M','F']
+        
         self.graph = tf.Graph()
         with self.graph.as_default():
             self.images = tf.placeholder(tf.float32, [None, RESIZE_FINAL, RESIZE_FINAL, 3])
@@ -147,23 +148,75 @@ class GenderEstimate(object):
     def run(self, face):
         with self.graph.as_default():
             return classify(self.sess, self.label_list, self.softmax_output, self.images, self.image_batch, self.face_placeholder, face)
+    
+class AgeGenderEstimate_mobilenetv2(object):
+    import tensorflow.contrib.tensorrt as trt
+    def __init__(self):
+        
+        self.model_dir = os.path.join(work_dir, 'age_gender_frozen_trt_mobilenetv2.pb')
+        self.label_list_gender = ['F','M']
+        self.label_list_age = ['(0, 3)','(4, 7)','(8, 13)','(14, 22)','(23, 34)','(35, 46)','(47, 59)','(60, 100)']
+        self.graph = tf.Graph()
+     
+        with tf.gfile.GFile(self.model_dir, "rb") as f:
+            restored_graph_def = tf.GraphDef()
+            restored_graph_def.ParseFromString(f.read())
+
+        with tf.Graph().as_default() as graph:
+            tf.import_graph_def(restored_graph_def,input_map=None,return_elements=None,name="")
+
+        self.gender_logits = graph.get_tensor_by_name('gender/Squeeze:0')
+        self.image_placeholder = graph.get_tensor_by_name('Image:0')
+        self.age = graph.get_tensor_by_name('Age_final:0')
+        self.sess= tf.Session(graph=graph)
+
+    def encoded_age(self, val):
+        if(val<=3):
+            z = 0
+        elif(val<=7):
+            z = 1
+        elif(val<=13):
+            z = 2
+        elif(val<=22):
+            z = 3
+        elif(val<=34):
+            z = 4
+        elif(val<=46):
+            z = 5
+        elif(val<=59):
+            z = 6
+        elif(val<=100):
+            z = 7
+        return z
+
+    def run(self, face):
+        with self.graph.as_default():
+           gender_, age_ = self.sess.run([gender_logits,age],feed_dict={image_placeholder:np.expand_dims(face,2)})
+           return self.label_list_gender[np.argmax(gender_[0])],self.label_list_age[encoded_age(age_[0])]
 
 
 class Demography(object):
-    def __init__(self, face_method='dlib', device='cpu', age_method='inception'):
+    def __init__(self, face_method='dlib', device='cpu', age_method='mobilenetv2',gender_method='mobilenetv2'):
         if age_method == 'inception':
             self.age_estimator = AgeEstimate()
         elif age_method == 'coral':
             self.age_estimator = AgeEstimate_Coral()
-        self.gender_estimator = GenderEstimate()
-        self.face_detect = Face(detector_method=face_method, recognition_method=None)
+        elif age_method == 'mobilenetv2':
+            self.gender_age_estimator = AgeGenderEstimate_mobilenetv2()
+
+        if gender_method == 'mobilenetv2':
+            self.gender_age_estimator = AgeGenderEstimate_mobilenetv2()
+        elif gender_method == 'inception'
+            self.gender_estimator = GenderEstimate()
+        #self.face_detect = Face(detector_method=face_method, recognition_method=None)
 
     def run(self, imgcv):
-        faces = self.face_detect.detect(imgcv)
-        results = []
-        for face in faces:
-            results.append(self.run_face(imgcv, face['box']))
-        return results
+        return self.gender_age_estimator.run(imgcv)
+        # faces = self.face_detect.detect(imgcv)
+        # results = []
+        # for face in faces:
+        #     results.append(self.run_face(imgcv, face['box']))
+        # return results
 
     def run_face(self, imgcv, face_box):
         face_image = common.subImage(imgcv, face_box)
