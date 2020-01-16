@@ -5,28 +5,31 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 from demographics.utils import *
-#from demographics.model import select_model, get_checkpoint
-# from face import Face
-# import common
-# import torch
-# from torchvision import transforms
-# from PIL import Image
-# from .coral_cnn import resnet34
+#Not needed for mobilenet realted demography
+try:
+    from demographics.model import select_model, get_checkpoint
+    from face import Face
+    import common
+    import torch
+    from torchvision import transforms
+    from PIL import Image
+    from .coral_cnn import resnet34
+    RESIZE_FINAL = 227
+
+    model_type = 'inception'
+    checkpoint = 'checkpoint'
+
+    gpu_options = tf.GPUOptions(allow_growth=True)
+    config = tf.ConfigProto(allow_soft_placement=True, gpu_options=gpu_options)
+    model_fn = select_model(model_type)
+
+except:
+    pass
 import cv2
 
 import os
 #work_dir = os.path.dirname(os.path.abspath(__file__))
 work_dir = "/LFS/demographics"
-
-# RESIZE_FINAL = 227
-
-# model_type = 'inception'
-# checkpoint = 'checkpoint'
-
-# gpu_options = tf.GPUOptions(allow_growth=True)
-# config = tf.ConfigProto(allow_soft_placement=True, gpu_options=gpu_options)
-# model_fn = select_model(model_type)
-
 
 def classify(sess, label_list, softmax_output, images, image_batch, face_placeholder, face):
     try:
@@ -151,7 +154,7 @@ class GenderEstimate(object):
     
 class AgeGenderEstimate_mobilenetv2(object):
     import tensorflow.contrib.tensorrt as trt
-    def __init__(self):
+    def __init__(self,gpu_frac=0.3):
         
         self.model_dir = os.path.join(work_dir, 'age_gender_frozen_trt_mobilenetv2.pb')
         self.label_list_gender = ['F','M']
@@ -164,11 +167,13 @@ class AgeGenderEstimate_mobilenetv2(object):
 
         with tf.Graph().as_default() as graph:
             tf.import_graph_def(restored_graph_def,input_map=None,return_elements=None,name="")
-
+        
         self.gender_logits = graph.get_tensor_by_name('gender/Squeeze:0')
         self.image_placeholder = graph.get_tensor_by_name('Image:0')
         self.age = graph.get_tensor_by_name('Age_final:0')
-        self.sess= tf.Session(graph=graph)
+        config = tf.ConfigProto()
+        config.gpu_options.per_process_gpu_memory_fraction = gpu_frac
+        self.sess= tf.Session(graph=graph,config=config)
 
     def encoded_age(self, val):
         if(val<=3):
@@ -191,32 +196,32 @@ class AgeGenderEstimate_mobilenetv2(object):
 
     def run(self, face):
         with self.graph.as_default():
-           gender_, age_ = self.sess.run([gender_logits,age],feed_dict={image_placeholder:np.expand_dims(face,2)})
-           return self.label_list_gender[np.argmax(gender_[0])],self.label_list_age[encoded_age(age_[0])]
+           gender_, age_ = self.sess.run([self.gender_logits,self.age],feed_dict={self.image_placeholder:np.expand_dims(face,2)})
+           return self.label_list_gender[np.argmax(gender_[0])],self.label_list_age[self.encoded_age(age_[0])]
 
 
 class Demography(object):
-    def __init__(self, face_method='dlib', device='cpu', age_method='mobilenetv2',gender_method='mobilenetv2'):
+    def __init__(self, face_method='dlib', device='cpu', age_method='mobilenetv2',gender_method='mobilenetv2',gpu_config =0.3):
         if age_method == 'inception':
             self.age_estimator = AgeEstimate()
         elif age_method == 'coral':
             self.age_estimator = AgeEstimate_Coral()
         elif age_method == 'mobilenetv2':
-            self.gender_age_estimator = AgeGenderEstimate_mobilenetv2()
+            self.gender_age_estimator = AgeGenderEstimate_mobilenetv2(gpu_frac=gpu_config)
 
         if gender_method == 'mobilenetv2':
-            self.gender_age_estimator = AgeGenderEstimate_mobilenetv2()
-        elif gender_method == 'inception'
+            self.gender_age_estimator = AgeGenderEstimate_mobilenetv2(gpu_frac=gpu_config)
+        elif gender_method == 'inception':
             self.gender_estimator = GenderEstimate()
-        #self.face_detect = Face(detector_method=face_method, recognition_method=None)
+        if face_method:
+            self.face_detect = Face(detector_method=face_method, recognition_method=None)
 
     def run(self, imgcv):
-        return self.gender_age_estimator.run(imgcv)
-        # faces = self.face_detect.detect(imgcv)
-        # results = []
-        # for face in faces:
-        #     results.append(self.run_face(imgcv, face['box']))
-        # return results
+        faces = self.face_detect.detect(imgcv)
+        results = []
+        for face in faces:
+            results.append(self.run_face(imgcv, face['box']))
+        return results
 
     def run_face(self, imgcv, face_box):
         face_image = common.subImage(imgcv, face_box)
