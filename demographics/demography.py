@@ -24,7 +24,8 @@ try:
     model_fn = select_model(model_type)
 
 except:
-    pass
+    config = None
+
 import cv2
 
 import os
@@ -130,6 +131,7 @@ class AgeEstimate_Coral(object):
 
 class GenderEstimate(object):
     def __init__(self):
+        global config
         self.model_dir = os.path.join(work_dir, 'model_gender')
         self.label_list = ['M','F']
         
@@ -140,8 +142,10 @@ class GenderEstimate(object):
             init = tf.global_variables_initializer()
             model_checkpoint_path, global_step = get_checkpoint(self.model_dir, None, checkpoint)
             self.softmax_output = tf.nn.softmax(logits)
-
-            self.sess = tf.Session(config=config,graph=self.graph)
+            if config is not None:
+                self.sess = tf.Session(config=config,graph=self.graph)
+            else:
+                self.sess = tf.Session(graph=self.graph)
             saver = tf.train.Saver()
             saver.restore(self.sess, model_checkpoint_path)
 
@@ -202,6 +206,10 @@ class AgeGenderEstimate_mobilenetv2(object):
 
 class Demography(object):
     def __init__(self, face_method='dlib', device='cpu', age_method='mobilenetv2',gender_method='mobilenetv2',gpu_config =0.3):
+        global config
+        if gpu_config is not None and config is not None:
+            config.gpu_options.per_process_gpu_memory_fraction = gpu_config
+
         if age_method == 'inception':
             self.age_estimator = AgeEstimate()
         elif age_method == 'coral':
