@@ -24,7 +24,8 @@ try:
     model_fn = select_model(model_type)
 
 except:
-    pass
+    config = None
+
 import cv2
 
 import os
@@ -130,6 +131,7 @@ class AgeEstimate_Coral(object):
 
 class GenderEstimate(object):
     def __init__(self):
+        global config
         self.model_dir = os.path.join(work_dir, 'model_gender')
         self.label_list = ['M','F']
         
@@ -140,8 +142,10 @@ class GenderEstimate(object):
             init = tf.global_variables_initializer()
             model_checkpoint_path, global_step = get_checkpoint(self.model_dir, None, checkpoint)
             self.softmax_output = tf.nn.softmax(logits)
-
-            self.sess = tf.Session(config=config,graph=self.graph)
+            if config is not None:
+                self.sess = tf.Session(config=config,graph=self.graph)
+            else:
+                self.sess = tf.Session(graph=self.graph)
             saver = tf.train.Saver()
             saver.restore(self.sess, model_checkpoint_path)
 
@@ -202,17 +206,27 @@ class AgeGenderEstimate_mobilenetv2(object):
 
 class Demography(object):
     def __init__(self, face_method='dlib', device='cpu', age_method='mobilenetv2',gender_method='mobilenetv2',gpu_config =0.3):
-        if age_method == 'inception':
-            self.age_estimator = AgeEstimate()
-        elif age_method == 'coral':
-            self.age_estimator = AgeEstimate_Coral()
-        elif age_method == 'mobilenetv2':
+        global config
+        if gpu_config is not None and config is not None:
+            config.gpu_options.per_process_gpu_memory_fraction = gpu_config
+        
+        if age_method == 'mobilenetv2' and gender_method == "mobilenetv2":
             self.gender_age_estimator = AgeGenderEstimate_mobilenetv2(gpu_frac=gpu_config)
+            self.mixed_model = True
+        else:
+            self.mixed_model = False
+            if age_method == 'inception':
+                self.age_estimator = AgeEstimate()
+            elif age_method == 'coral':
+                self.age_estimator = AgeEstimate_Coral()
+            elif age_method == "mobilenetv2":
+                self.age_estimator = AgeGenderEstimate_mobilenetv2(gpu_frac=gpu_config)
 
-        if gender_method == 'mobilenetv2':
-            self.gender_age_estimator = AgeGenderEstimate_mobilenetv2(gpu_frac=gpu_config)
-        elif gender_method == 'inception':
-            self.gender_estimator = GenderEstimate()
+            if gender_method == 'inception':
+                self.gender_estimator = GenderEstimate()
+            elif gender_method == 'mobilenetv2':
+                self.gender_estimator = AgeGenderEstimate_mobilenetv2(gpu_frac=gpu_config)
+                
         if face_method:
             self.face_detect = Face(detector_method=face_method, recognition_method=None)
 
@@ -225,13 +239,22 @@ class Demography(object):
 
     def run_face(self, imgcv, face_box):
         face_image = common.subImage(imgcv, face_box)
-        gender = self.gender_estimator.run(face_image)
+        if self.mixed_model:
+            gender, age = self.gender_age_estimator.run(face_image)
+        else:
+            if isinstance(self.gender_estimator, AgeGenderEstimate_mobilenetv2):
+                gender = self.gender_estimator.run(face_image)[0]
+            else:
+                gender = self.gender_estimator.run(face_image)
 
-        if isinstance(self.age_estimator, AgeEstimate):
-            age = self.age_estimator.run(face_image)
-        elif isinstance(self.age_estimator, AgeEstimate_Coral):
-            face_image = common.subImage(imgcv, face_box, padding_type='coral')
-            age = self.age_estimator.run(face_image)
+            if isinstance(self.age_estimator, AgeGenderEstimate_mobilenetv2):
+                age = self.age_estimator.run(face_image)[1]
+            else:
+                if isinstance(self.age_estimator, AgeEstimate):
+                    age = self.age_estimator.run(face_image)
+                elif isinstance(self.age_estimator, AgeEstimate_Coral):
+                    face_image = common.subImage(imgcv, face_box, padding_type='coral')
+                    age = self.age_estimator.run(face_image)
 
         return self._format_results(face_box, age, gender)
 
