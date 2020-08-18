@@ -158,9 +158,9 @@ class GenderEstimate(object):
     
 class AgeGenderEstimate_mobilenetv2(object):
     import tensorflow.contrib.tensorrt as trt
-    def __init__(self,gpu_frac=0.3):
+    def __init__(self,gpu_frac=0.3, model_file='age_gender_frozen_trt_mobilenetv2.pb'):
         
-        self.model_dir = os.path.join(work_dir, 'age_gender_frozen_trt_mobilenetv2.pb')
+        self.model_dir = os.path.join(work_dir, model_file)
         self.label_list_gender = ['F','M']
         self.label_list_age = ['(0, 3)','(4, 7)','(8, 13)','(14, 22)','(23, 34)','(35, 46)','(47, 59)','(60, 100)']
         self.graph = tf.Graph()
@@ -205,13 +205,13 @@ class AgeGenderEstimate_mobilenetv2(object):
 
 
 class Demography(object):
-    def __init__(self, face_method='dlib', device='cpu', age_method='mobilenetv2',gender_method='mobilenetv2',gpu_config =0.3):
+    def __init__(self, face_method='dlib', device='cpu', age_method='mobilenetv2',gender_method='mobilenetv2',gpu_config =0.3,model_file='age_gender_frozen_trt_mobilenetv2.pb'):
         global config
         if gpu_config is not None and config is not None:
             config.gpu_options.per_process_gpu_memory_fraction = gpu_config
         
         if age_method == 'mobilenetv2' and gender_method == "mobilenetv2":
-            self.gender_age_estimator = AgeGenderEstimate_mobilenetv2(gpu_frac=gpu_config)
+            self.gender_age_estimator = AgeGenderEstimate_mobilenetv2(gpu_frac=gpu_config, model_file=model_file)
             self.mixed_model = True
         else:
             self.mixed_model = False
