@@ -240,6 +240,7 @@ class Demography(object):
     def run_face(self, imgcv, face_box):
         face_image = common.subImage(imgcv, face_box)
         if self.mixed_model:
+            face_image = cv2.cvtColor(face_imgae, cv2.COLOR_BGR2GRAY)
             gender, age = self.gender_age_estimator.run(face_image)
         else:
             if isinstance(self.gender_estimator, AgeGenderEstimate_mobilenetv2):
