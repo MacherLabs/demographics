@@ -230,15 +230,22 @@ class Demography(object):
         if face_method:
             self.face_detect = Face(detector_method=face_method, recognition_method=None)
 
-    def run(self, imgcv):
-        faces = self.face_detect.detect(imgcv)
+    def run(self, imgcv, face_detect=False):
         results = []
-        for face in faces:
-            results.append(self.run_face(imgcv, face['box']))
+        if face_detect:
+            faces = self.face_detect.detect(imgcv)
+            for face in faces:
+                results.append(self.run_face(imgcv, face['box']))
+        else:
+            results.append(self.run_face(imgcv, None))
         return results
 
     def run_face(self, imgcv, face_box):
-        face_image = common.subImage(imgcv, face_box)
+        if face_box is not None:
+            face_image = common.subImage(imgcv, face_box)
+        else:
+            face_image = imgcv
+            
         if self.mixed_model:
             face_image = cv2.cvtColor(face_image, cv2.COLOR_BGR2GRAY)
             gender, age = self.gender_age_estimator.run(face_image)
